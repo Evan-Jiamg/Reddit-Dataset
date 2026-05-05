@@ -1,0 +1,9 @@
+{
+  "subreddit": "politics",
+  "total_comments": 500000,
+  "n_clusters": 1184,
+  "noise_count": 232460,
+  "min_cluster_size": 50,
+  "umap_dims": 50,
+  "sbert_model": "all-MiniLM-L6-v2"
+}

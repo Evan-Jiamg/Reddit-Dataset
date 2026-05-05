@@ -1,0 +1,25 @@
+# Large data files (too large for GitHub)
+data/embeddings_politics.npy
+data/ids_politics.json
+model/final_model.pt
+
+# Raw dataset (15 GB)
+*.zst
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+.env/
+env/
+
+# OS
+.DS_Store
+Thumbs.db

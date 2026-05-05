@@ -1,0 +1,148 @@
+=================================================================
+FULL EDA REPORT — RC_2019-04 (Reddit Comments, April 2019)
+Generated: 2026-05-02 04:31:51
+=================================================================
+
+[BASIC INFO]
+  Total records   : 138,473,643
+  Parse errors    : 0
+  Elapsed time    : 65.7 min
+
+[SCORE]
+  Count  : 138,473,643
+  Mean   : 7.62
+  Std    : 107.47
+  Min    : -9090
+  Max    : 66762
+
+[BODY LENGTH (non-deleted)]
+  Count  : 122,461,351
+  Mean   : 167.8
+  Std    : 313.5
+  Min    : 1
+  Max    : 36686
+
+[DELETION]
+  Deleted / Removed : 16,012,292  (11.56%)
+  Active            : 122,461,351  (88.44%)
+
+[CONTROVERSIALITY]
+  Controversial     : 2,634,554  (1.90%)
+
+[GILDED]
+  Gilded total      : 42,582
+
+[AUTHORS]
+  Unique authors    : >2,000,000 (cap reached)
+
+[SUBREDDIT TYPE]
+  public                130,002,501  (93.88%)
+  restricted              8,204,157  (5.92%)
+  user                      255,848  (0.18%)
+  archived                   11,137  (0.01%)
+
+[DISTINGUISHED]
+  moderator               2,608,078  (1.88%)
+  admin                         442  (0.00%)
+  special                         4  (0.00%)
+
+[MISSING VALUES (top 20)]
+  removal_reason                       138,473,257  (100.0%)
+  archived                             138,472,635  (100.0%)
+  author_cakeday                       138,080,257  (99.7%)
+  collapsed_reason                     136,722,372  (98.7%)
+  distinguished                        135,865,119  (98.1%)
+  author_flair_template_id             118,630,143  (85.7%)
+  author_flair_css_class               109,331,558  (79.0%)
+  author_flair_text                    108,061,059  (78.0%)
+  author_flair_background_color         90,167,735  (65.1%)
+  author_flair_text_color               90,167,735  (65.1%)
+  author_created_utc                    23,838,022  (17.2%)
+  author_flair_richtext                 17,440,276  (12.6%)
+  author_flair_type                     17,440,276  (12.6%)
+  author_fullname                       17,440,276  (12.6%)
+  author_patreon_flair                  17,440,276  (12.6%)
+  all_awardings                          4,577,752  (3.3%)
+  total_awards_received                  4,577,752  (3.3%)
+  locked                                 4,418,596  (3.2%)
+
+[TOP 50 SUBREDDITS]
+  r/AskReddit                       6,620,793 (4.78%)  del=5.3%  avg_score=18.0
+  r/politics                        1,758,057 (1.27%)  del=11.7%  avg_score=9.0
+  r/memes                           1,410,040 (1.02%)  del=9.1%  avg_score=5.7
+  r/dankmemes                       1,398,137 (1.01%)  del=11.4%  avg_score=7.0
+  r/nba                             1,396,911 (1.01%)  del=7.0%  avg_score=13.9
+  r/teenagers                       1,260,212 (0.91%)  del=3.6%  avg_score=5.0
+  r/funny                             961,270 (0.69%)  del=9.7%  avg_score=10.1
+  r/AmItheAsshole                     960,892 (0.69%)  del=5.9%  avg_score=15.6
+  r/gameofthrones                     936,452 (0.68%)  del=5.7%  avg_score=17.2
+  r/worldnews                         886,120 (0.64%)  del=11.5%  avg_score=12.1
+  r/unpopularopinion                  880,173 (0.64%)  del=5.8%  avg_score=4.2
+  r/soccer                            800,444 (0.58%)  del=6.6%  avg_score=15.2
+  r/SquaredCircle                     795,289 (0.57%)  del=5.0%  avg_score=9.1
+  r/The_Donald                        795,051 (0.57%)  del=8.7%  avg_score=9.2
+  r/hockey                            779,784 (0.56%)  del=4.9%  avg_score=9.9
+  r/freefolk                          726,780 (0.52%)  del=4.8%  avg_score=13.5
+  r/gaming                            670,405 (0.48%)  del=6.6%  avg_score=11.2
+  r/nfl                               636,255 (0.46%)  del=6.4%  avg_score=12.9
+  r/Market76                          626,562 (0.45%)  del=2.8%  avg_score=1.0
+  r/Showerthoughts                    624,243 (0.45%)  del=6.5%  avg_score=10.0
+  r/PewdiepieSubmissions              614,599 (0.44%)  del=7.1%  avg_score=8.1
+  r/marvelstudios                     608,885 (0.44%)  del=4.3%  avg_score=16.2
+  r/news                              601,125 (0.43%)  del=19.8%  avg_score=13.8
+  r/AskOuija                          581,304 (0.42%)  del=7.2%  avg_score=5.4
+  r/gonewild                          574,114 (0.41%)  del=10.7%  avg_score=1.4
+  r/pics                              573,632 (0.41%)  del=8.0%  avg_score=12.0
+  r/FortNiteBR                        545,656 (0.39%)  del=5.3%  avg_score=4.8
+  r/todayilearned                     516,116 (0.37%)  del=5.9%  avg_score=20.8
+  r/aww                               515,197 (0.37%)  del=8.4%  avg_score=14.2
+  r/movies                            510,121 (0.37%)  del=5.3%  avg_score=16.0
+  r/apexlegends                       506,149 (0.37%)  del=4.5%  avg_score=7.0
+  r/leagueoflegends                   492,800 (0.36%)  del=7.9%  avg_score=10.2
+  r/NBAPlayOffsLiveStream             490,194 (0.35%)  del=100.0%  avg_score=1.0
+  r/relationship_advice               474,395 (0.34%)  del=7.0%  avg_score=8.8
+  r/ChapoTrapHouse                    414,836 (0.30%)  del=9.1%  avg_score=15.0
+  r/AKHANvsCRAWFORDLive               412,360 (0.30%)  del=100.0%  avg_score=1.0
+  r/Animemes                          398,070 (0.29%)  del=2.9%  avg_score=12.5
+  r/thedivision                       372,450 (0.27%)  del=3.7%  avg_score=2.7
+  r/NBAPLAYOFFSLiveHQ                 372,067 (0.27%)  del=100.0%  avg_score=1.0
+  r/Pikabu                            355,454 (0.26%)  del=2.6%  avg_score=5.7
+  r/videos                            354,370 (0.26%)  del=7.9%  avg_score=15.2
+  r/MMA                               347,509 (0.25%)  del=9.4%  avg_score=10.7
+  r/MortalKombat                      333,976 (0.24%)  del=3.0%  avg_score=5.2
+  r/wallstreetbets                    331,635 (0.24%)  del=7.7%  avg_score=4.4
+  r/interestingasfuck                 326,242 (0.24%)  del=8.4%  avg_score=16.9
+  r/mildlyinteresting                 322,740 (0.23%)  del=5.5%  avg_score=12.0
+  r/RoastMe                           318,086 (0.23%)  del=5.8%  avg_score=11.8
+  r/DestinyTheGame                    313,539 (0.23%)  del=2.9%  avg_score=5.8
+  r/trashy                            308,893 (0.22%)  del=7.5%  avg_score=15.8
+  r/ukpolitics                        306,189 (0.22%)  del=5.6%  avg_score=5.0
+
+[HOURLY DISTRIBUTION (UTC)]
+  00h  #################################         6,488,568
+  01h  #################################         6,433,902
+  02h  ################################          6,306,121
+  03h  #############################             5,688,198
+  04h  #########################                 4,955,469
+  05h  #####################                     4,155,913
+  06h  ##################                        3,607,899
+  07h  ################                          3,230,837
+  08h  ###############                           2,939,311
+  09h  ###############                           2,981,243
+  10h  #################                         3,333,285
+  11h  #####################                     4,128,570
+  12h  ##########################                5,068,749
+  13h  ###############################           6,112,316
+  14h  ###################################       6,895,564
+  15h  ######################################    7,308,253
+  16h  #######################################   7,513,113
+  17h  ########################################  7,691,054
+  18h  #######################################   7,645,606
+  19h  #######################################   7,690,875
+  20h  #######################################   7,577,200
+  21h  #####################################     7,180,840
+  22h  ###################################       6,883,894
+  23h  ##################################        6,656,863
+
+=================================================================
+END OF REPORT
