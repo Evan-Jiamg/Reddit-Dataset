@@ -30,7 +30,7 @@ MAX_COMMENTS = 500_000
 
 
 def stream_subreddit(data_path: str, subreddit: str, max_comments: int):
-    """Yield (comment_id, body) for non-deleted comments in target subreddit."""
+    """Yield (comment_id, body, author, score) for non-deleted comments in target subreddit."""
     target = subreddit.lower()
     count = 0
     with open(data_path, "rb") as fh:
@@ -57,8 +57,12 @@ def stream_subreddit(data_path: str, subreddit: str, max_comments: int):
                     body = rec.get("body", "")
                     if body in ("[deleted]", "[removed]", "") or len(body) < MIN_BODY_LEN:
                         continue
+                    author = rec.get("author", "[unknown]")
+                    if author in ("[deleted]", "[removed]", ""):
+                        author = "[unknown]"
                     cid = rec.get("id") or rec.get("name", "")
-                    yield cid, body
+                    score = int(rec.get("score", 1))
+                    yield cid, body, author, score
                     count += 1
                     if count >= max_comments:
                         break
@@ -90,21 +94,31 @@ def run(subreddit: str, min_cluster_size: int, max_comments: int,
     ids_cache = os.path.join(cache_dir, f"ids_{subreddit}.json")
 
     # 1. Load from cache or stream + embed
-    if os.path.exists(emb_cache) and os.path.exists(ids_cache):
+    cache_valid = (
+        os.path.exists(emb_cache) and
+        os.path.exists(ids_cache) and
+        "authors" in json.load(open(ids_cache, encoding="utf-8"))
+    ) if os.path.exists(ids_cache) else False
+
+    if cache_valid:
         print(f"Loading cached embeddings from {emb_cache} ...")
         embeddings = np.load(emb_cache)
         with open(ids_cache, encoding="utf-8") as f:
             cache_data = json.load(f)
         ids = cache_data["ids"]
         bodies = cache_data["bodies"]
+        authors = cache_data["authors"]
+        scores = cache_data["scores"]
         print(f"  Loaded {len(ids):,} comments, embeddings shape: {embeddings.shape}")
     else:
         # Stream comments
         print("Streaming comments...")
-        ids, bodies = [], []
-        for cid, body in stream_subreddit(DATA_PATH, subreddit, max_comments):
+        ids, bodies, authors, scores = [], [], [], []
+        for cid, body, author, score in stream_subreddit(DATA_PATH, subreddit, max_comments):
             ids.append(cid)
             bodies.append(body)
+            authors.append(author)
+            scores.append(score)
 
         if not ids:
             print("No comments found. Check subreddit name.")
@@ -126,7 +140,8 @@ def run(subreddit: str, min_cluster_size: int, max_comments: int,
         os.makedirs(cache_dir, exist_ok=True)
         np.save(emb_cache, embeddings)
         with open(ids_cache, "w", encoding="utf-8") as f:
-            json.dump({"ids": ids, "bodies": bodies}, f, ensure_ascii=False)
+            json.dump({"ids": ids, "bodies": bodies, "authors": authors, "scores": scores},
+                      f, ensure_ascii=False)
         print(f"  Cached embeddings → {emb_cache}")
 
     # 2. Optional UMAP dimensionality reduction
@@ -171,8 +186,19 @@ def run(subreddit: str, min_cluster_size: int, max_comments: int,
         if cid_val == -1:
             continue
         mask = labels == cid_val
-        cluster_ids = [ids[i] for i, m in enumerate(mask) if m]
-        cluster_bodies = [bodies[i] for i, m in enumerate(mask) if m]
+        indices = [i for i, m in enumerate(mask) if m]
+
+        # Deduplicate: per author keep only the highest-score comment
+        best: dict[str, tuple[int, int]] = {}  # author -> (index, score)
+        for i in indices:
+            author = authors[i]
+            score = scores[i]
+            if author not in best or score > best[author][1]:
+                best[author] = (i, score)
+
+        dedup_indices = [v[0] for v in best.values()]
+        cluster_ids = [ids[i] for i in dedup_indices]
+        cluster_bodies = [bodies[i] for i in dedup_indices]
 
         keywords = extract_keywords(cluster_bodies)
         kw_list = [k.strip() for k in keywords.split(",")]
@@ -184,7 +210,8 @@ def run(subreddit: str, min_cluster_size: int, max_comments: int,
             "topic_label": topic_label,
             "topic_description": topic_description,
             "comment_ids": cluster_ids,
-            "size": int(mask.sum()),
+            "size": len(cluster_ids),
+            "size_before_dedup": int(mask.sum()),
         })
 
     clusters.sort(key=lambda x: x["size"], reverse=True)
