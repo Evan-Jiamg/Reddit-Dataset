@@ -245,9 +245,10 @@ for ax, (topic, arr), color in zip(
     ax.set_ylim(0, max(pct_s.max(), pct_o.max()) * 1.28)
 
 axes[0].set_ylabel("% of all comments")
-axes[0].legend(fontsize=7.5, loc="upper right")
-
-fig.tight_layout()
+handles, labels = axes[0].get_legend_handles_labels()
+fig.legend(handles, labels, ncol=2, loc="lower center",
+           bbox_to_anchor=(0.5, 0.0), fontsize=7.5)
+fig.subplots_adjust(bottom=0.22)
 p = os.path.join(CHART_DIR, "chart3_extremes.png")
 fig.savefig(p)
 plt.close(fig)
