@@ -248,7 +248,7 @@ axes[0].set_ylabel("% of all comments")
 handles, labels = axes[0].get_legend_handles_labels()
 fig.legend(handles, labels, ncol=2, loc="lower center",
            bbox_to_anchor=(0.5, 0.0), fontsize=7.5)
-fig.subplots_adjust(bottom=0.22)
+fig.subplots_adjust(bottom=0.32)
 p = os.path.join(CHART_DIR, "chart3_extremes.png")
 fig.savefig(p)
 plt.close(fig)
