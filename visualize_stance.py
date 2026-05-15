@@ -204,53 +204,50 @@ plt.close(fig)
 print(f"  Saved: {p}")
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Chart 3 — Extreme-stance line chart
+# Chart 3 — Extreme-stance grouped bar (two panels: Gun | Abortion)
 # ═════════════════════════════════════════════════════════════════════════════
 print("Chart 3: extreme-stance proportions...")
 
-records = {}
-for topic, arr in [("Gun Control", gun), ("Abortion", abort)]:
-    pct_s = [(arr >=  t).mean() * 100 for t in THRESHOLDS]
-    pct_o = [(arr <= -t).mean() * 100 for t in THRESHOLDS]
-    records[topic] = (pct_s, pct_o)
+x    = np.arange(len(THRESHOLDS))
+w    = 0.32   # bar width
+C_SUP = C_GUN          # dark blue  — Support
+C_OPP = C_ABRT         # mid blue   — Oppose
 
-fig, ax = plt.subplots(figsize=(6.5, 2.4))
+fig, axes = plt.subplots(1, 2, figsize=(6.5, 2.4), sharey=True)
 
-x_thr = np.array(THRESHOLDS)
+for ax, (topic, arr), color in zip(
+        axes,
+        [("Gun Control", gun), ("Abortion", abort)],
+        [C_GUN, C_GUN]):
 
-# Gun Control
-pct_s, pct_o = records["Gun Control"]
-ax.plot(x_thr, pct_s, color=C_GUN, ls=LS_GUN,       lw=1.5, marker="o", ms=4,
-        label="Gun Control — Support (≥ +t)")
-ax.plot(x_thr, pct_o, color=C_GUN, ls=(0, (3,1,1,1)), lw=1.5, marker="s", ms=4,
-        label="Gun Control — Oppose  (≤ −t)")
+    pct_s = np.array([(arr >=  t).mean() * 100 for t in THRESHOLDS])
+    pct_o = np.array([(arr <= -t).mean() * 100 for t in THRESHOLDS])
 
-# Abortion
-pct_s, pct_o = records["Abortion"]
-ax.plot(x_thr, pct_s, color=C_ABRT, ls=LS_ABRT,       lw=1.5, marker="o", ms=4,
-        label="Abortion — Support (≥ +t)")
-ax.plot(x_thr, pct_o, color=C_ABRT, ls=(0, (3,1,1,1)), lw=1.5, marker="s", ms=4,
-        label="Abortion — Oppose  (≤ −t)")
+    b1 = ax.bar(x - w/2, pct_s, w,
+                label="Support  (score ≥ +t)",
+                color=C_GUN, hatch="",     edgecolor=C_GUN,  lw=0.5, alpha=0.85)
+    b2 = ax.bar(x + w/2, pct_o, w,
+                label="Oppose   (score ≤ −t)",
+                color=C_ABRT, hatch="////", edgecolor=C_ABRT, lw=0.5, alpha=0.85)
 
-# Value labels at each point
-for topic, arr, c in [("Gun Control", gun, C_GUN), ("Abortion", abort, C_ABRT)]:
-    for t, ps, po in zip(THRESHOLDS,
-                         [(arr >= t).mean()*100 for t in THRESHOLDS],
-                         [(arr <=-t).mean()*100 for t in THRESHOLDS]):
-        ax.text(t, ps + 0.8, f"{ps:.1f}%", ha="center", va="bottom",
-                fontsize=6, color=c)
-        ax.text(t, po + 0.8, f"{po:.1f}%", ha="center", va="bottom",
-                fontsize=6, color=c)
+    # value labels inside / above bars
+    for bar, val in [(b1, pct_s), (b2, pct_o)]:
+        for rect, v in zip(bar, val):
+            ax.text(rect.get_x() + rect.get_width()/2,
+                    rect.get_height() + 0.5,
+                    f"{v:.1f}%", ha="center", va="bottom",
+                    fontsize=6.5, color="#222222")
 
-ax.set_xlabel(r"Threshold $t$  (proportion of comments with $|$score$| \geq t$)")
-ax.set_ylabel("% of comments")
-ax.set_xticks(THRESHOLDS)
-ax.set_xlim(0.45, 0.95)
-ax.set_ylim(0)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"≥ {t}" for t in THRESHOLDS], fontsize=8)
+    ax.set_xlabel("Threshold $|$score$|$")
+    ax.set_title(topic, fontsize=9)
+    ax.set_ylim(0, max(pct_s.max(), pct_o.max()) * 1.28)
 
-fig.legend(ncol=2, loc="lower center",
-           bbox_to_anchor=(0.5, 0.0), fontsize=7.5)
-fig.subplots_adjust(bottom=0.32)
+axes[0].set_ylabel("% of all comments")
+axes[0].legend(fontsize=7.5, loc="upper right")
+
+fig.tight_layout()
 p = os.path.join(CHART_DIR, "chart3_extremes.png")
 fig.savefig(p)
 plt.close(fig)
