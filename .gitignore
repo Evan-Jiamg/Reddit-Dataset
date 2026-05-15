@@ -1,7 +1,7 @@
 # Large data files (too large for GitHub)
 data/embeddings_politics.npy
 data/ids_politics.json
-model/final_model.pt
+model/*.pt
 
 # Raw dataset (15 GB)
 *.zst

@@ -16,12 +16,15 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sentence_transformers import SentenceTransformer
 import hdbscan
 
-DATA_PATH = os.path.join(
-    os.environ["USERPROFILE"],
-    ".cache", "kagglehub", "datasets",
-    "i221113hadiyatanveer",
-    "the-pushshift-reddit-dataset-submissions",
-    "versions", "1", "RC_2019-04.zst"
+DATA_PATH = os.environ.get(
+    "REDDIT_DATA_PATH",
+    os.path.join(
+        os.path.expanduser("~"),
+        ".cache", "kagglehub", "datasets",
+        "i221113hadiyatanveer",
+        "the-pushshift-reddit-dataset-submissions",
+        "versions", "1", "RC_2019-04.zst"
+    )
 )
 
 SBERT_MODEL = "all-MiniLM-L6-v2"
@@ -29,10 +32,17 @@ MIN_BODY_LEN = 20
 MAX_COMMENTS = 500_000
 
 
-def stream_subreddit(data_path: str, subreddit: str, max_comments: int):
-    """Yield (comment_id, body, author, score) for non-deleted comments in target subreddit."""
+def stream_subreddit(data_path: str, subreddit: str, max_comments: int,
+                     max_per_author: int = 0):
+    """Yield (comment_id, body, author, score) for non-deleted comments in target subreddit.
+
+    max_per_author: if > 0, cap each author to this many comments globally (first-seen
+    wins).  The per-cluster author dedup in run() still runs afterwards; this is a cheap
+    pre-filter that stops prolific authors from dominating the embedding space.
+    """
     target = subreddit.lower()
     count = 0
+    author_seen: dict[str, int] = {}  # author -> number of comments already yielded
     with open(data_path, "rb") as fh:
         dctx = zstd.ZstdDecompressor()
         with dctx.stream_reader(fh) as reader:
@@ -60,13 +70,18 @@ def stream_subreddit(data_path: str, subreddit: str, max_comments: int):
                     author = rec.get("author", "[unknown]")
                     if author in ("[deleted]", "[removed]", ""):
                         author = "[unknown]"
+                    if max_per_author > 0 and author_seen.get(author, 0) >= max_per_author:
+                        continue
                     cid = rec.get("id") or rec.get("name", "")
                     score = int(rec.get("score", 1))
                     yield cid, body, author, score
+                    author_seen[author] = author_seen.get(author, 0) + 1
                     count += 1
                     if count >= max_comments:
                         break
-    print(f"  Streamed {count:,} comments from r/{subreddit}")
+    print(f"  Streamed {count:,} comments from r/{subreddit}"
+          + (f"  (max_per_author={max_per_author}, unique authors={len(author_seen):,})"
+             if max_per_author else ""))
 
 
 def extract_keywords(texts: list[str], top_n: int = 8) -> str:
@@ -86,7 +101,7 @@ def extract_keywords(texts: list[str], top_n: int = 8) -> str:
 
 
 def run(subreddit: str, min_cluster_size: int, max_comments: int,
-        output_dir: str, umap_dims: int):
+        output_dir: str, umap_dims: int, max_per_author: int = 0):
     print(f"\n=== Stage 1: Clustering r/{subreddit} ===")
 
     cache_dir = output_dir
@@ -114,7 +129,8 @@ def run(subreddit: str, min_cluster_size: int, max_comments: int,
         # Stream comments
         print("Streaming comments...")
         ids, bodies, authors, scores = [], [], [], []
-        for cid, body, author, score in stream_subreddit(DATA_PATH, subreddit, max_comments):
+        for cid, body, author, score in stream_subreddit(DATA_PATH, subreddit, max_comments,
+                                                         max_per_author=max_per_author):
             ids.append(cid)
             bodies.append(body)
             authors.append(author)
@@ -148,33 +164,86 @@ def run(subreddit: str, min_cluster_size: int, max_comments: int,
     cluster_input = embeddings
     if umap_dims > 0 and umap_dims < embeddings.shape[1]:
         print(f"Reducing {embeddings.shape[1]}→{umap_dims} dims with UMAP...")
+
+        # Try GPU UMAP (RAPIDS cuml) first, fall back to CPU umap-learn
+        cuml_path = "/mnt/NewSSD/CS_project/pypackages"
+        _used_gpu = False
         try:
-            import umap
-        except ImportError:
-            print("  umap-learn not installed. Run: pip install umap-learn")
-            print("  Skipping UMAP, using full embeddings.")
-        else:
-            reducer = umap.UMAP(
+            import sys
+            if cuml_path not in sys.path:
+                sys.path.insert(0, cuml_path)
+            from cuml.manifold import UMAP as cuUMAP
+            import cupy as cp
+            print("  Using GPU UMAP (cuml)...")
+            reducer = cuUMAP(
                 n_components=umap_dims,
                 n_neighbors=15,
                 min_dist=0.0,
                 metric="cosine",
                 random_state=42,
-                low_memory=True,
             )
             cluster_input = reducer.fit_transform(embeddings)
-            print(f"  Reduced shape: {cluster_input.shape}")
+            if hasattr(cluster_input, "get"):          # cupy array → numpy
+                cluster_input = cluster_input.get()
+            _used_gpu = True
+            print(f"  Reduced shape (GPU): {cluster_input.shape}")
+        except Exception as e:
+            if _used_gpu:
+                raise
+            print(f"  cuml not available ({e}), falling back to CPU umap-learn...")
+            try:
+                import umap
+            except ImportError:
+                print("  umap-learn not installed. Run: pip install umap-learn")
+                print("  Skipping UMAP, using full embeddings.")
+            else:
+                reducer = umap.UMAP(
+                    n_components=umap_dims,
+                    n_neighbors=15,
+                    min_dist=0.0,
+                    metric="cosine",
+                    random_state=42,
+                    low_memory=True,
+                )
+                cluster_input = reducer.fit_transform(embeddings)
+                print(f"  Reduced shape (CPU): {cluster_input.shape}")
 
-    # 3. HDBSCAN clustering
+    # 3. HDBSCAN clustering — try GPU (cuml) first, fall back to CPU
     print(f"Clustering (min_cluster_size={min_cluster_size})...")
-    clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=min_cluster_size,
-        min_samples=5,
-        metric="euclidean",
-        cluster_selection_method="eom",
-        core_dist_n_jobs=-1,
-    )
-    labels = clusterer.fit_predict(cluster_input)
+    _used_gpu_hdbscan = False
+    try:
+        cuml_path = "/mnt/NewSSD/CS_project/reddit_env/lib/python3.12/site-packages"
+        import sys
+        if cuml_path not in sys.path:
+            sys.path.insert(0, cuml_path)
+        from cuml.cluster import HDBSCAN as cuHDBSCAN
+        import cupy as cp
+        print("  Using GPU HDBSCAN (cuml)...")
+        gpu_clusterer = cuHDBSCAN(
+            min_cluster_size=min_cluster_size,
+            min_samples=5,
+            metric="euclidean",
+            cluster_selection_method="eom",
+        )
+        labels = gpu_clusterer.fit_predict(cluster_input.astype("float32"))
+        if hasattr(labels, "get"):
+            labels = labels.get()
+        import numpy as _np
+        labels = _np.asarray(labels)
+        _used_gpu_hdbscan = True
+        print("  GPU HDBSCAN done.")
+    except Exception as e:
+        if _used_gpu_hdbscan:
+            raise
+        print(f"  cuml HDBSCAN unavailable ({e}), using CPU hdbscan...")
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=min_cluster_size,
+            min_samples=5,
+            metric="euclidean",
+            cluster_selection_method="eom",
+            core_dist_n_jobs=-1,
+        )
+        labels = clusterer.fit_predict(cluster_input)
 
     n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
     noise_count = int((labels == -1).sum())
@@ -253,6 +322,9 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
     parser.add_argument("--umap-dims", type=int, default=50,
                         help="UMAP target dimensions before HDBSCAN (0 = skip UMAP)")
+    parser.add_argument("--max-per-author", type=int, default=0,
+                        help="Global per-author cap at stream time (0 = no limit). "
+                             "Complements the per-cluster author dedup done after HDBSCAN.")
     args = parser.parse_args()
 
     run(
@@ -261,4 +333,5 @@ if __name__ == "__main__":
         max_comments=args.max_comments,
         output_dir=args.output_dir,
         umap_dims=args.umap_dims,
+        max_per_author=args.max_per_author,
     )

@@ -15,12 +15,15 @@ import zstandard as zstd
 from transformers import RobertaTokenizer, RobertaModel
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(
-    os.environ["USERPROFILE"],
-    ".cache", "kagglehub", "datasets",
-    "i221113hadiyatanveer",
-    "the-pushshift-reddit-dataset-submissions",
-    "versions", "1", "RC_2019-04.zst"
+DATA_PATH = os.environ.get(
+    "REDDIT_DATA_PATH",
+    os.path.join(
+        os.path.expanduser("~"),
+        ".cache", "kagglehub", "datasets",
+        "i221113hadiyatanveer",
+        "the-pushshift-reddit-dataset-submissions",
+        "versions", "1", "RC_2019-04.zst"
+    )
 )
 
 

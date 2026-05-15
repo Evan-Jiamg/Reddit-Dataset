@@ -19,12 +19,12 @@ import matplotlib.patches as mpatches
 from matplotlib.ticker import MultipleLocator
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SCORES_DIR = os.path.join(SCRIPT_DIR, "stance_scores")
+SCORES_DIR = "/mnt/NewSSD/CS_project/Reddit-Dataset/stance_scores"
 CHART_DIR  = os.path.join(SCRIPT_DIR, "stance_charts")
-IDS_CACHE  = os.path.join(SCRIPT_DIR, "data", "ids_politics.json")
+IDS_CACHE  = "/mnt/NewSSD/CS_project/Reddit-Dataset/data/ids_politics.json"
 
-GUN_IDS      = {775, 708, 750, 705, 456, 725}
-ABORTION_IDS = {132, 131, 203}
+GUN_IDS      = {90, 220, 344}
+ABORTION_IDS = {160}
 THRESHOLDS   = [0.5, 0.7, 0.8, 0.9]
 
 os.makedirs(CHART_DIR, exist_ok=True)
@@ -52,11 +52,10 @@ print(f"  {len(data):,} comments total  ({n_gun:,} gun, {n_abrt:,} abortion)")
 
 # cluster short labels  (sorted by size, largest first)
 CLUSTER_META = {
-    775: ("Gun Control", 2620), 708: ("Gun Control",  461),
-    750: ("Gun Control",  163), 705: ("Gun Control",  128),
-    456: ("Gun Control",  112), 725: ("Gun Control",   97),
-    132: ("Abortion",   1491), 131: ("Abortion",      127),
-    203: ("Abortion",     76),
+    90: ("Gun Control", 89),
+    160: ("Abortion", 1088),
+    220: ("Gun Control", 311),
+    344: ("Gun Control", 2341),
 }
 def clabel(cid):
     topic, n = CLUSTER_META[cid]
