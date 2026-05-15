@@ -1,323 +1,259 @@
 """
 visualize_stance.py
 ───────────────────
-Read stance_scores/*.parquet → produce 4 charts + console summary:
+Read stance_scores/*.parquet → produce 3 paper-quality charts:
 
-  Chart 1: KDE + histogram  (gun vs abortion, side-by-side)
-  Chart 2: Per-cluster box plot
-  Chart 3: Extreme-value bar chart (at |stance| ≥ 0.5 / 0.7 / 0.8 / 0.9)
-  Chart 4: Sample extreme comments (top-10 support + oppose per topic)
+  Chart 1: KDE distribution — both topics on one axis, stratification bins shown
+  Chart 2: Per-cluster horizontal box plot — all clusters, sorted by median
+  Chart 3: Extreme-stance line chart — % beyond threshold (0.5/0.7/0.8/0.9)
+
+Design: single-hue blue palette, Arial 9pt, 6.5" wide, B&W-printable.
 """
 
-import os, json
+import os
 import pandas as pd
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.ticker import MultipleLocator
+import matplotlib.ticker as ticker
+from scipy.stats import gaussian_kde
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SCORES_DIR = "/mnt/NewSSD/CS_project/Reddit-Dataset/stance_scores"
+SCORES_DIR = os.path.join(SCRIPT_DIR, "stance_scores")
 CHART_DIR  = os.path.join(SCRIPT_DIR, "stance_charts")
-IDS_CACHE  = "/mnt/NewSSD/CS_project/Reddit-Dataset/data/ids_politics.json"
-
-GUN_IDS      = {90, 220, 344}
-ABORTION_IDS = {160}
-THRESHOLDS   = [0.5, 0.7, 0.8, 0.9]
-
 os.makedirs(CHART_DIR, exist_ok=True)
 
-# ── 1. Load all parquets ──────────────────────────────────────────────────────
-print("Loading Parquet files...")
+GUN_IDS  = {775, 708, 750, 725, 705, 456}
+ABRT_IDS = {132, 131}
+THRESHOLDS = [0.5, 0.7, 0.8, 0.9]
+BIN_THR    = [-0.75, -0.25, 0.25, 0.75]   # stratification thresholds
+
+# ── Palette (single-hue blues) ────────────────────────────────────────────────
+C_GUN  = "#08306b"   # dark blue  — Gun Control
+C_ABRT = "#4292c6"   # mid blue   — Abortion
+LS_GUN  = "solid"
+LS_ABRT = (0, (6, 2))   # long-dash
+
+HATCH_GUN  = ""
+HATCH_ABRT = "////"
+
+# ── Paper rcParams ────────────────────────────────────────────────────────────
+plt.rcParams.update({
+    "font.family":        "sans-serif",
+    "font.sans-serif":    ["Arial", "Liberation Sans", "Helvetica", "DejaVu Sans"],
+    "font.size":          9,
+    "axes.labelsize":     9,
+    "axes.titlesize":     9,
+    "legend.fontsize":    8,
+    "xtick.labelsize":    8,
+    "ytick.labelsize":    8,
+    "axes.spines.top":    False,
+    "axes.spines.right":  False,
+    "axes.linewidth":     0.7,
+    "axes.grid":          True,
+    "grid.alpha":         0.25,
+    "grid.linewidth":     0.5,
+    "grid.linestyle":     ":",
+    "lines.linewidth":    1.5,
+    "figure.dpi":         150,
+    "savefig.dpi":        300,
+    "savefig.bbox":       "tight",
+    "savefig.pad_inches": 0.05,
+    "legend.framealpha":  0.9,
+    "legend.edgecolor":   "0.75",
+    "legend.borderpad":   0.4,
+    "legend.handlelength": 2.0,
+})
+
+# ── Load data ─────────────────────────────────────────────────────────────────
+print("Loading parquet files...")
 frames = []
 for fname in sorted(os.listdir(SCORES_DIR)):
     if not fname.endswith(".parquet"):
         continue
     cid = int(fname.replace("cluster_", "").replace(".parquet", ""))
-    df  = pd.read_parquet(os.path.join(SCORES_DIR, fname))
-    if cid in GUN_IDS:
-        df["topic"] = "Gun Control"
-    elif cid in ABORTION_IDS:
-        df["topic"] = "Abortion"
-    else:
+    if cid not in GUN_IDS | ABRT_IDS:
         continue
+    df = pd.read_parquet(os.path.join(SCORES_DIR, fname))
+    df["topic"]      = "Gun Control" if cid in GUN_IDS else "Abortion"
+    df["cluster_id"] = cid
     frames.append(df)
 
-data = pd.concat(frames, ignore_index=True)
-n_gun  = (data.topic == "Gun Control").sum()
-n_abrt = (data.topic == "Abortion").sum()
-print(f"  {len(data):,} comments total  ({n_gun:,} gun, {n_abrt:,} abortion)")
+data   = pd.concat(frames, ignore_index=True)
+gun    = data[data.topic == "Gun Control"]["stance"].values
+abort  = data[data.topic == "Abortion"]["stance"].values
+print(f"  Gun Control: n={len(gun):,}   Abortion: n={len(abort):,}")
 
-# cluster short labels  (sorted by size, largest first)
-CLUSTER_META = {
-    90: ("Gun Control", 89),
-    160: ("Abortion", 1088),
-    220: ("Gun Control", 311),
-    344: ("Gun Control", 2341),
-}
-def clabel(cid):
-    topic, n = CLUSTER_META[cid]
-    short = topic.split()[0]  # "Gun" / "Abortion"
-    return f"{short} #{cid}\n(n={n:,})"
+# ═════════════════════════════════════════════════════════════════════════════
+# Chart 1 — KDE distribution, both topics, with stratification bins
+# ═════════════════════════════════════════════════════════════════════════════
+print("Chart 1: stance distribution...")
 
-data["cluster_label"] = data["cluster_id"].map(clabel)
+x = np.linspace(-1.05, 1.05, 400)
+kde_gun  = gaussian_kde(gun,  bw_method="scott")(x)
+kde_abrt = gaussian_kde(abort, bw_method="scott")(x)
+y_max = max(kde_gun.max(), kde_abrt.max())
 
-COLORS = {"Gun Control": "#E74C3C", "Abortion": "#2980B9"}
+fig, ax = plt.subplots(figsize=(6.5, 2.6))
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Chart 1 — KDE + histogram
-# ═══════════════════════════════════════════════════════════════════════════════
-print("Generating Chart 1: distributions...")
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+ax.plot(x, kde_gun,  color=C_GUN,  ls=LS_GUN,  lw=1.5,
+        label=f"Gun Control ($n$={len(gun):,})")
+ax.fill_between(x, kde_gun,  alpha=0.10, color=C_GUN)
 
-for ax, topic in zip(axes, ["Gun Control", "Abortion"]):
-    sub   = data[data.topic == topic]["stance"]
-    color = COLORS[topic]
+ax.plot(x, kde_abrt, color=C_ABRT, ls=LS_ABRT, lw=1.5,
+        label=f"Abortion ($n$={len(abort):,})")
+ax.fill_between(x, kde_abrt, alpha=0.10, color=C_ABRT)
 
-    ax.hist(sub, bins=80, density=True, alpha=0.30,
-            color=color, edgecolor="none", zorder=1)
-    sub.plot.kde(ax=ax, color=color, lw=2.5, zorder=3)
+# Stratification bin boundaries
+for thr in BIN_THR:
+    ax.axvline(thr, color="0.55", lw=0.6, ls=":", zorder=0)
 
-    mean_val = sub.mean()
-    ax.axvline(mean_val, color="black", ls="--", lw=1.8,
-               label=f"Mean = {mean_val:+.3f}", zorder=4)
-    ax.axvline(0, color="#555555", ls=":", lw=1, zorder=2)
+# Mean lines
+ax.axvline(gun.mean(),   color=C_GUN,  lw=0.9, ls=(0, (3, 2)),
+           label=f"Mean gun = {gun.mean():+.2f}")
+ax.axvline(abort.mean(), color=C_ABRT, lw=0.9, ls=(0, (3, 2)),
+           label=f"Mean abortion = {abort.mean():+.2f}")
 
-    # shade extreme regions
-    for t, alpha in [(0.7, 0.10), (0.9, 0.18)]:
-        ax.axvspan( t,  1.05, alpha=alpha, color=color,  zorder=0)
-        ax.axvspan(-1.05, -t, alpha=alpha, color="#7F8C8D", zorder=0)
+# Bin labels at top
+bin_centers = [-0.875, -0.5, 0.0, 0.5, 0.875]
+bin_texts   = ["Strongly\nOppose", "Oppose", "Neutral", "Support", "Strongly\nSupport"]
+for cx, txt in zip(bin_centers, bin_texts):
+    ax.text(cx, y_max * 1.13, txt,
+            ha="center", va="top", fontsize=6, color="0.45")
 
-    # annotate extreme % at |0.9|
-    pct_s = (sub >= 0.9).mean() * 100
-    pct_o = (sub <= -0.9).mean() * 100
-    ax.text(0.96, 0.97, f"≥+0.9: {pct_s:.1f}%",
-            transform=ax.transAxes, ha="right", va="top",
-            fontsize=9, color=color)
-    ax.text(0.04, 0.97, f"≤−0.9: {pct_o:.1f}%",
-            transform=ax.transAxes, ha="left", va="top",
-            fontsize=9, color="#7F8C8D")
+ax.set_xlim(-1.05, 1.05)
+ax.set_ylim(0, y_max * 1.28)
+ax.set_xlabel("RoBERTa stance score  ($-1$ = strongly oppose,  $+1$ = strongly support)")
+ax.set_ylabel("Density")
+ax.xaxis.set_major_locator(ticker.MultipleLocator(0.25))
 
-    ax.set_xlim(-1.05, 1.05)
-    ax.set_xlabel("Stance score  (−1 = oppose, +1 = support)", fontsize=10)
-    ax.set_ylabel("Density", fontsize=10)
-    ax.set_title(f"{topic}  (n={len(sub):,})", fontsize=12,
-                 fontweight="bold", color=color)
-    ax.legend(fontsize=10)
-    ax.grid(axis="y", alpha=0.25)
-
-plt.suptitle("Stance Score Distributions — r/politics (April 2019)",
-             fontsize=14, y=1.01)
-plt.tight_layout()
+ax.legend(loc="upper left", ncol=2, fontsize=7.5)
+fig.tight_layout()
 p = os.path.join(CHART_DIR, "chart1_distribution.png")
-plt.savefig(p, dpi=150, bbox_inches="tight")
-plt.close()
+fig.savefig(p)
+plt.close(fig)
 print(f"  Saved: {p}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Chart 2 — Per-cluster box plot
-# ═══════════════════════════════════════════════════════════════════════════════
-print("Generating Chart 2: per-cluster box plot...")
-fig, axes = plt.subplots(1, 2, figsize=(16, 6),
-                         gridspec_kw={"width_ratios": [6, 3]})
+# ═════════════════════════════════════════════════════════════════════════════
+# Chart 2 — Per-cluster horizontal box plot
+# ═════════════════════════════════════════════════════════════════════════════
+print("Chart 2: per-cluster box plot...")
 
-for ax, topic, color in [
-    (axes[0], "Gun Control", "#E74C3C"),
-    (axes[1], "Abortion",    "#2980B9"),
-]:
-    sub   = data[data.topic == topic]
-    order = (sub.groupby("cluster_label")["stance"]
-               .median().sort_values(ascending=False).index.tolist())
-    groups = [sub[sub.cluster_label == lbl]["stance"].values for lbl in order]
+# Build cluster table sorted by median
+cluster_info = []
+for cid in sorted(GUN_IDS | ABRT_IDS):
+    sub = data[data.cluster_id == cid]["stance"].values
+    if len(sub) == 0:
+        continue
+    topic = "Gun Control" if cid in GUN_IDS else "Abortion"
+    cluster_info.append(dict(
+        cid=cid, topic=topic,
+        label=f"{'GC' if topic == 'Gun Control' else 'AB'}-{cid}  ($n$={len(sub):,})",
+        data=sub,
+        median=np.median(sub),
+    ))
+cluster_info.sort(key=lambda d: d["median"])
 
-    bp = ax.boxplot(
-        groups, vert=True, patch_artist=True, widths=0.5,
-        medianprops=dict(color="black", lw=2.5),
-        boxprops=dict(facecolor=color, alpha=0.45),
-        whiskerprops=dict(lw=1.2, color="#555"),
-        capprops=dict(lw=1.2, color="#555"),
-        flierprops=dict(marker=".", ms=3, alpha=0.25, color=color),
-    )
-    # overlay mean dots
-    means = [g.mean() for g in groups]
-    ax.scatter(range(1, len(order)+1), means, zorder=5,
-               color="white", edgecolors=color, s=40, lw=1.5, label="Mean")
+n_cl = len(cluster_info)
+fig, ax = plt.subplots(figsize=(6.5, 0.45 * n_cl + 0.7))
 
-    ax.set_xticks(range(1, len(order)+1))
-    ax.set_xticklabels(order, rotation=30, ha="right", fontsize=9)
-    ax.axhline(0, color="#777", ls=":", lw=1)
-    ax.set_ylabel("Stance score", fontsize=10)
-    ax.set_ylim(-1.15, 1.15)
-    ax.yaxis.set_minor_locator(MultipleLocator(0.1))
-    ax.grid(axis="y", alpha=0.25)
-    ax.set_title(topic, fontsize=12, fontweight="bold", color=color)
-    ax.legend(fontsize=9)
+for i, ci in enumerate(cluster_info):
+    color = C_GUN if ci["topic"] == "Gun Control" else C_ABRT
+    q1, med, q3 = np.percentile(ci["data"], [25, 50, 75])
+    iqr = q3 - q1
+    lo  = max(ci["data"].min(), q1 - 1.5 * iqr)
+    hi  = min(ci["data"].max(), q3 + 1.5 * iqr)
 
-plt.suptitle("Per-Cluster Stance Distribution\n"
-             "Box = IQR, Whiskers = 1.5×IQR, Line = Median, Dot = Mean",
-             fontsize=12, y=1.02)
-plt.tight_layout()
+    # whiskers
+    ax.plot([lo, hi], [i, i], color=color, lw=0.8, zorder=2)
+    # box
+    ax.barh(i, q3 - q1, left=q1, height=0.45,
+            color=color, alpha=0.30,
+            hatch=HATCH_GUN if ci["topic"] == "Gun Control" else HATCH_ABRT,
+            edgecolor=color, linewidth=0.6, zorder=3)
+    # median
+    ax.plot([med, med], [i - 0.225, i + 0.225], color=color, lw=1.5, zorder=4)
+    # mean dot
+    ax.scatter(ci["data"].mean(), i, color="white", edgecolors=color,
+               s=18, lw=0.8, zorder=5)
+
+ax.axvline(0, color="0.50", lw=0.6, ls=":", zorder=1)
+ax.set_yticks(range(n_cl))
+ax.set_yticklabels([ci["label"] for ci in cluster_info], fontsize=7.5)
+ax.set_xlabel("Stance score")
+ax.set_xlim(-1.1, 1.1)
+ax.xaxis.set_major_locator(ticker.MultipleLocator(0.25))
+
+# Legend patches
+import matplotlib.patches as mpatches
+handles = [
+    mpatches.Patch(facecolor=C_GUN,  alpha=0.3, edgecolor=C_GUN,  label="Gun Control"),
+    mpatches.Patch(facecolor=C_ABRT, alpha=0.3, edgecolor=C_ABRT,
+                   hatch=HATCH_ABRT, label="Abortion"),
+    plt.Line2D([0], [0], color="0.4", lw=1.5, label="Median"),
+    plt.Line2D([0], [0], marker="o", color="w", markeredgecolor="0.4",
+               markersize=4, label="Mean"),
+]
+ax.legend(handles=handles, loc="lower right", fontsize=7.5, ncol=2)
+
+fig.tight_layout()
 p = os.path.join(CHART_DIR, "chart2_per_cluster.png")
-plt.savefig(p, dpi=150, bbox_inches="tight")
-plt.close()
+fig.savefig(p)
+plt.close(fig)
 print(f"  Saved: {p}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Chart 3 — Extreme-value bar chart
-# ═══════════════════════════════════════════════════════════════════════════════
-print("Generating Chart 3: extreme values...")
-records = []
-for topic in ["Gun Control", "Abortion"]:
-    sub = data[data.topic == topic]["stance"]
-    n   = len(sub)
-    for t in THRESHOLDS:
-        records.append(dict(
-            topic=topic, threshold=t,
-            n_support=int((sub >=  t).sum()),
-            n_oppose =int((sub <= -t).sum()),
-            pct_s=(sub >=  t).mean() * 100,
-            pct_o=(sub <= -t).mean() * 100,
-            n_total=n,
-        ))
-ext_df = pd.DataFrame(records)
+# ═════════════════════════════════════════════════════════════════════════════
+# Chart 3 — Extreme-stance line chart
+# ═════════════════════════════════════════════════════════════════════════════
+print("Chart 3: extreme-stance proportions...")
 
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-x = np.arange(len(THRESHOLDS))
-w = 0.35
+records = {}
+for topic, arr in [("Gun Control", gun), ("Abortion", abort)]:
+    pct_s = [(arr >=  t).mean() * 100 for t in THRESHOLDS]
+    pct_o = [(arr <= -t).mean() * 100 for t in THRESHOLDS]
+    records[topic] = (pct_s, pct_o)
 
-for ax, topic, color in [(axes[0], "Gun Control", "#E74C3C"),
-                          (axes[1], "Abortion",    "#2980B9")]:
-    sub = ext_df[ext_df.topic == topic].reset_index(drop=True)
-    b1 = ax.bar(x - w/2, sub["pct_s"], w,
-                label="Support (score ≥ +threshold)", color=color, alpha=0.82)
-    b2 = ax.bar(x + w/2, sub["pct_o"], w,
-                label="Oppose  (score ≤ −threshold)", color="#7F8C8D", alpha=0.82)
+fig, ax = plt.subplots(figsize=(6.5, 2.4))
 
-    for i, row in sub.iterrows():
-        ax.text(i - w/2, row.pct_s + 0.4,
-                f"{row.pct_s:.1f}%\n({row.n_support:,})",
-                ha="center", va="bottom", fontsize=7.5)
-        ax.text(i + w/2, row.pct_o + 0.4,
-                f"{row.pct_o:.1f}%\n({row.n_oppose:,})",
-                ha="center", va="bottom", fontsize=7.5)
+x_thr = np.array(THRESHOLDS)
 
-    ax.set_xticks(x)
-    ax.set_xticklabels([f"|score| ≥ {t}" for t in THRESHOLDS], fontsize=9)
-    ax.set_ylabel("% of all comments in topic", fontsize=10)
-    ax.set_title(f"{topic}  (total n={sub.n_total.iloc[0]:,})",
-                 fontsize=12, fontweight="bold", color=color)
-    ax.legend(fontsize=9)
-    ax.grid(axis="y", alpha=0.25)
+# Gun Control
+pct_s, pct_o = records["Gun Control"]
+ax.plot(x_thr, pct_s, color=C_GUN, ls=LS_GUN,       lw=1.5, marker="o", ms=4,
+        label="Gun Control — Support (≥ +t)")
+ax.plot(x_thr, pct_o, color=C_GUN, ls=(0, (3,1,1,1)), lw=1.5, marker="s", ms=4,
+        label="Gun Control — Oppose  (≤ −t)")
 
-plt.suptitle("How Many Comments Hold Extreme Stances?", fontsize=13, y=1.01)
-plt.tight_layout()
+# Abortion
+pct_s, pct_o = records["Abortion"]
+ax.plot(x_thr, pct_s, color=C_ABRT, ls=LS_ABRT,       lw=1.5, marker="o", ms=4,
+        label="Abortion — Support (≥ +t)")
+ax.plot(x_thr, pct_o, color=C_ABRT, ls=(0, (3,1,1,1)), lw=1.5, marker="s", ms=4,
+        label="Abortion — Oppose  (≤ −t)")
+
+# Value labels at each point
+for topic, arr, c in [("Gun Control", gun, C_GUN), ("Abortion", abort, C_ABRT)]:
+    for t, ps, po in zip(THRESHOLDS,
+                         [(arr >= t).mean()*100 for t in THRESHOLDS],
+                         [(arr <=-t).mean()*100 for t in THRESHOLDS]):
+        ax.text(t, ps + 0.8, f"{ps:.1f}%", ha="center", va="bottom",
+                fontsize=6, color=c)
+        ax.text(t, po + 0.8, f"{po:.1f}%", ha="center", va="bottom",
+                fontsize=6, color=c)
+
+ax.set_xlabel(r"Threshold $t$  (proportion of comments with $|$score$| \geq t$)")
+ax.set_ylabel("% of comments")
+ax.set_xticks(THRESHOLDS)
+ax.set_xlim(0.45, 0.95)
+ax.set_ylim(0)
+
+fig.legend(ncol=2, loc="lower center",
+           bbox_to_anchor=(0.5, 0.0), fontsize=7.5)
+fig.subplots_adjust(bottom=0.32)
 p = os.path.join(CHART_DIR, "chart3_extremes.png")
-plt.savefig(p, dpi=150, bbox_inches="tight")
-plt.close()
+fig.savefig(p)
+plt.close(fig)
 print(f"  Saved: {p}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Chart 4 — Sample extreme comments  (load body text from cache)
-# ═══════════════════════════════════════════════════════════════════════════════
-print("Generating Chart 4: extreme comment samples...")
-
-body_map = {}
-if os.path.exists(IDS_CACHE):
-    print(f"  Loading comment bodies from {IDS_CACHE} ...")
-    with open(IDS_CACHE, encoding="utf-8") as f:
-        cache = json.load(f)
-    body_map = dict(zip(cache["ids"], cache["bodies"]))
-    print(f"  Loaded {len(body_map):,} bodies")
-else:
-    print(f"  WARNING: {IDS_CACHE} not found — skipping body text in Chart 4")
-
-SAMPLE_N = 8  # top N per direction per topic
-
-fig, axes = plt.subplots(2, 2, figsize=(20, 16))
-fig.patch.set_facecolor("#F8F9FA")
-
-for row_idx, topic in enumerate(["Gun Control", "Abortion"]):
-    color = COLORS[topic]
-    sub   = data[data.topic == topic].copy()
-    sub["body"] = sub["comment_id"].map(body_map) if body_map else "—"
-
-    for col_idx, (direction, sign) in enumerate([("Most Supportive", 1),
-                                                  ("Most Opposed",   -1)]):
-        ax = axes[row_idx][col_idx]
-        ax.set_facecolor("#FFFFFF")
-        ax.axis("off")
-
-        if sign == 1:
-            sample = sub.nlargest(SAMPLE_N, "stance")
-        else:
-            sample = sub.nsmallest(SAMPLE_N, "stance")
-
-        title_color = color if sign == 1 else "#555555"
-        ax.set_title(f"{topic} — {direction} (top {SAMPLE_N})",
-                     fontsize=12, fontweight="bold", color=title_color,
-                     pad=8)
-
-        y = 0.96
-        for _, r in sample.iterrows():
-            body = str(r.get("body", "—"))
-            if body and body != "nan":
-                # wrap to ~90 chars
-                words = body.split()
-                lines, line = [], []
-                for w in words:
-                    line.append(w)
-                    if len(" ".join(line)) > 88:
-                        lines.append(" ".join(line))
-                        line = []
-                if line:
-                    lines.append(" ".join(line))
-                snippet = "\n".join(lines[:3])
-                if len(lines) > 3:
-                    snippet += "…"
-            else:
-                snippet = "(body not available)"
-
-            score_str = f"[{r.stance:+.3f}]"
-            ax.text(0.01, y, score_str, transform=ax.transAxes,
-                    fontsize=9, fontweight="bold",
-                    color=title_color, va="top", family="monospace")
-            ax.text(0.12, y, snippet, transform=ax.transAxes,
-                    fontsize=8, va="top", wrap=True,
-                    color="#222222", linespacing=1.4)
-            y -= (snippet.count("\n") + 1) * 0.055 + 0.015
-            ax.plot([0.01, 0.99], [y + 0.005, y + 0.005],
-                    transform=ax.transAxes, color="#DDDDDD", lw=0.7,
-                    clip_on=False)
-
-plt.suptitle("Extreme-Stance Comment Samples\n"
-             "(scores closest to +1.0 and −1.0)",
-             fontsize=14, y=0.995)
-plt.tight_layout(rect=[0, 0, 1, 0.97])
-p = os.path.join(CHART_DIR, "chart4_samples.png")
-plt.savefig(p, dpi=130, bbox_inches="tight")
-plt.close()
-print(f"  Saved: {p}")
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Console summary
-# ═══════════════════════════════════════════════════════════════════════════════
-print("\n" + "═" * 65)
-print("STANCE SUMMARY")
-print("═" * 65)
-for topic in ["Gun Control", "Abortion"]:
-    sub = data[data.topic == topic]["stance"]
-    print(f"\n  {topic}  (n={len(sub):,})")
-    print(f"    Mean   = {sub.mean():+.4f}")
-    print(f"    Median = {sub.median():+.4f}")
-    print(f"    Std    = {sub.std():.4f}")
-    print(f"    Min    = {sub.min():+.4f}  Max = {sub.max():+.4f}")
-    print(f"    {'Threshold':>12}  {'Support':>10}  {'%':>6}  {'Oppose':>10}  {'%':>6}")
-    for t in THRESHOLDS:
-        ns = int((sub >=  t).sum()); ps = ns/len(sub)*100
-        no = int((sub <= -t).sum()); po = no/len(sub)*100
-        print(f"    {f'|score|>={t}':>12}  {ns:>10,}  {ps:>5.1f}%  {no:>10,}  {po:>5.1f}%")
-
-print("\n" + "═" * 65)
-print(f"All charts saved to: {CHART_DIR}")
+print(f"\nAll charts saved to: {CHART_DIR}")
